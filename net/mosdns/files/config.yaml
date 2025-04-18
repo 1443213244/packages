@@ -1,119 +1,166 @@
+# mosdns 配置文件
+# 日志级别设置
 log:
-  level: error
-  file: ''
-
-data_providers:
-  - tag: geosite
-    file: /usr/share/v2ray/geosite.dat
-    auto_reload: true
-  - tag: geoip
-    file: /usr/share/v2ray/geoip.dat
-    auto_reload: true
+  level: info
 
 plugins:
-  # 缓存
+  # ==================== 基础功能配置 ====================
+  
+  # 缓存配置：提高解析速度，减少DNS查询
   - tag: cache
     type: cache
     args:
-      size: 1024
+      size: 40960          # 缓存大小
+      lazy_cache_ttl: 86400  # 缓存时间24小时
+      dump_file: "cache.dump"  # 缓存持久化
+      dump_interval: 600    # 每10分钟保存一次
 
-  # 转发至本地服务器的插件
+
+  # ==================== DNS服务器配置 ====================
+  
+  # 本地 DNS 服务器（用于解析内网域名）
   - tag: forward_local
-    type: fast_forward
+    type: forward
     args:
-      upstream:
-        - addr: https://1.12.12.12/dns-query
+      concurrent: 1
+      upstreams:
+        - addr: udp://127.0.0.1:53  # 使用本机DNS避免环路
 
-  # 转发至远程服务器的插件
-  - tag: forward_remote
-    type: fast_forward
+  # 阿里DNS服务器（主要）- 仅用于国内域名
+  - tag: forward_ali_primary
+    type: forward
     args:
-      upstream:
-        - addr: https://8.8.8.8/dns-query
+      concurrent: 2
+      upstreams:
+        - addr: tcp://223.5.5.5
 
-  # 匹配本地域名的插件
-  - tag: query_is_local_domain
-    type: query_matcher
+  # 阿里DNS服务器（备用）
+  - tag: forward_ali_backup
+    type: forward
     args:
-      domain:
-        - 'provider:geosite:cn'
+      concurrent: 2
+      upstreams:
+        - addr: tcp://223.6.6.6
 
-  # 匹配非本地域名的插件
-  - tag: query_is_non_local_domain
-    type: query_matcher
+  # Cloudflare DNS服务器（主要，加密）- 直连
+  - tag: forward_cf_primary_direct
+    type: forward
     args:
-      domain:
-        - 'provider:geosite:geolocation-!cn'
+      concurrent: 2
+      upstreams:
+        - addr: https://1.1.1.1/dns-query
+        - addr: tls://1.1.1.1:853
 
-  # 匹配广告域名的插件
-  - tag: query_is_ad_domain
-    type: query_matcher
+  # Cloudflare DNS服务器（主要，加密）- 代理
+  - tag: forward_cf_primary_proxy
+    type: forward
     args:
-      domain:
-        - 'provider:geosite:category-ads-all'
+      concurrent: 2
+      upstreams:
+        - addr: https://1.1.1.1/dns-query
+        - addr: tls://1.1.1.1:853
 
-  # 匹配本地 IP 的插件
-  - tag: response_has_local_ip
-    type: response_matcher
+  # ==================== 匹配器配置 ====================
+
+  # 本地域名匹配器
+  - tag: local_matcher
+    type: domain_set
     args:
-      ip:
-        - 'provider:geoip:cn'
+      files:
+        - "/etc/mosdns/rules/local.txt"
 
-  # 主要的运行逻辑插件
-  # sequence 插件中调用的插件 tag 必须在 sequence 前定义，
-  # 否则 sequence 找不到对应插件。
+  # 国内域名匹配器
+  - tag: china_matcher
+    type: domain_set
+    args:
+      files:
+        - "/etc/mosdns/rules/chinalist.txt"
+
+  # GFW域名匹配器
+  - tag: gfw_matcher
+    type: domain_set
+    args:
+      files:
+        - "/etc/mosdns/rules/gfwlist.txt"
+
+  # ==================== 解析策略配置 ====================
+
+  # 本地域名解析策略
+  - tag: local_sequence
+    type: sequence
+    args:
+      - matches: 
+          - qname $local_matcher
+        exec: $forward_local
+      - matches: has_resp
+        exec: accept
+
+  # 国内域名解析策略：使用阿里DNS，带故障转移
+  - tag: china_sequence
+    type: sequence
+    args:
+      - exec: $forward_ali_primary
+      - matches: has_resp
+      - exec: accept
+      - exec: $forward_ali_backup
+      - matches: has_resp
+        exec: accept
+      - exec: drop_resp
+
+  # GFW域名解析策略：先尝试直连，失败则使用代理
+  - tag: gfw_sequence
+    type: sequence
+    args:
+      # 先尝试直连
+      - exec: $forward_cf_primary_direct
+      - matches: has_resp
+        exec: ipset gfwlist,inet,32
+      - matches: has_resp
+        exec: accept
+      # 直连失败则使用代理
+      - exec: $forward_cf_primary_proxy
+      - matches: has_resp
+        exec: ipset gfwlist,inet,32
+      - matches: has_resp
+        exec: accept
+      - exec: drop_resp
+
+  # 主解析序列：定义DNS查询的处理流程
   - tag: main_sequence
     type: sequence
     args:
-      exec:
-        # 缓存
-        - cache
+      # 1. 检查缓存
+      - exec: $cache
+      - matches: has_resp
+        exec: accept
 
-        # 屏蔽广告域名
-        - if: query_is_ad_domain
-          exec:
-            - _new_nxdomain_response
-            - _return
+      # 2. 本地域名使用本地DNS
+      - matches: qname $local_matcher
+        exec: $local_sequence
 
-        # 已知的本地域名用本地服务器解析
-        - if: query_is_local_domain
-          exec:
-            - forward_local
-            - _return
+      # 3. 国内域名使用阿里DNS（直连）
+      - matches: qname $china_matcher
+        exec: $china_sequence
 
-        # 已知的非本地域名用远程服务器解析
-        - if: query_is_non_local_domain
-          exec:
-            - forward_remote
-            - _return
+      # 4. GFW域名使用智能DNS策略
+      - matches: qname $gfw_matcher
+        exec: $gfw_sequence
 
-          # 剩下的未知域名用 IP 分流。
-          # 这里借助了 `fallback` 工作机制。分流原理请参考 `fallback`
-          # 的工作流程。
-          # primary 从本地服务器获取应答，丢弃非本地 IP 的结果。
-        - primary:
-            - forward_local
-            - if: "(! response_has_local_ip) && [_response_valid_answer]"
-              exec:
-                - _drop_response
-          # secondary 从远程服务器获取应答。
-          secondary:
-            - _prefer_ipv4
-            - forward_remote
-          # 这里建议设置成 local 服务器正常延时的 2~5 倍。
-          # 这个延时保证了 local 延时偶尔变高时，其结果不会被 remote 抢答。
-          # 如果 local 超过这个延时还没响应，可以假设 local 出现了问题。
-          # 这时用就采用 remote 的应答。单位: 毫秒。
-          fast_fallback: 200
+      # 5. 未匹配的域名使用智能DNS策略
+      - exec: $gfw_sequence
 
-servers:
-  - exec: main_sequence
-    listeners:
-      - protocol: udp
-        addr: 127.0.0.1:6052
-      - protocol: tcp
-        addr: 127.0.0.1:6052
-      - protocol: udp
-        addr: '[::1]:6052'
-      - protocol: tcp
-        addr: '[::1]:6052'
+  # ==================== 服务配置 ====================
+  
+  # UDP服务配置
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :1853
+
+  # TCP服务配置
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :1853

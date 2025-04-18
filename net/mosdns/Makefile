@@ -5,12 +5,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mosdns
-PKG_VERSION:=5.1.3
+PKG_VERSION:=5.3.3
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/IrineSistiana/mosdns/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=7db89b2399ace81e86b53e95e5260e55778ad5e6e8dd82a73dd6989dcd2e0eda
+PKG_HASH:=1d7eeaa735cb48ed2d436797d7f2a82541699f74647cd293ee411a72cdc65f5f
 
 PKG_LICENSE:=GPL-3.0
 PKG_LICENSE_FILES:=LICENSE
@@ -18,7 +18,7 @@ PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 
 PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
-PKG_USE_MIPS16:=0
+PKG_BUILD_FLAGS:=no-mips16
 
 GO_PKG:=github.com/IrineSistiana/mosdns
 GO_PKG_LDFLAGS_X:=main.version=v$(PKG_VERSION)
@@ -36,8 +36,6 @@ define Package/mosdns
   PROVIDES:=mosdns-neo
 endef
 
-GO_PKG_TARGET_VARS:=$(filter-out CGO_ENABLED=%,$(GO_PKG_TARGET_VARS)) CGO_ENABLED=0
-
 define Package/mosdns/conffiles
 /etc/mosdns/
 endef
@@ -50,6 +48,9 @@ define Package/mosdns/install
 
 	$(INSTALL_DIR) $(1)/etc/mosdns
 	$(INSTALL_DATA) ./files/config.yaml $(1)/etc/mosdns/config.yaml
+	$(INSTALL_DATA) ./files/rules/chinalist.txt $(1)/etc/mosdns/rules/chinalist.txt
+	$(INSTALL_DATA) ./files/rules/gfwlist.txt $(1)/etc/mosdns/rules/gfwlist.txt
+	$(INSTALL_DATA) ./files/rules/local.txt $(1)/etc/mosdns/rules/local.txt
 endef
 
 define Package/mosdns/postinst
