@@ -48,6 +48,8 @@ define Package/mosdns/install
 
 	$(INSTALL_DIR) $(1)/etc/mosdns
 	$(INSTALL_DATA) ./files/config.yaml $(1)/etc/mosdns/config.yaml
+
+	$(INSTALL_DIR) $(1)/etc/mosdns/rules
 	$(INSTALL_DATA) ./files/rules/chinalist.txt $(1)/etc/mosdns/rules/chinalist.txt
 	$(INSTALL_DATA) ./files/rules/gfwlist.txt $(1)/etc/mosdns/rules/gfwlist.txt
 	$(INSTALL_DATA) ./files/rules/local.txt $(1)/etc/mosdns/rules/local.txt
