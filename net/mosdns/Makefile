@@ -58,14 +58,12 @@ endef
 define Package/mosdns/postinst
 #!/bin/sh
 
-# check if we are on real system
-if [ -z "$${IPKG_INSTROOT}" ]; then
-    # Enable the service to start on boot
-    /etc/init.d/mosdns enable
+# Enable the service to start on boot
+/etc/init.d/mosdns enable
 
-    # Start the service
-    /etc/init.d/mosdns start
-fi
+# Start the service
+/etc/init.d/mosdns start
+
 exit 0
 endef
 
