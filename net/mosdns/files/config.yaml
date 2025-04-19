@@ -101,7 +101,7 @@ plugins:
     args:
       - exec: $forward_ali_primary
       - matches: has_resp
-      - exec: accept
+        exec: accept
       - exec: $forward_ali_backup
       - matches: has_resp
         exec: accept
