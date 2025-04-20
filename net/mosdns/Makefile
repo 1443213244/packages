@@ -53,13 +53,14 @@ define Package/mosdns/install
 	$(INSTALL_DATA) ./files/rules/chinalist.txt $(1)/etc/mosdns/rules/chinalist.txt
 	$(INSTALL_DATA) ./files/rules/gfwlist.txt $(1)/etc/mosdns/rules/gfwlist.txt
 	$(INSTALL_DATA) ./files/rules/local.txt $(1)/etc/mosdns/rules/local.txt
+endef
 
-	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	echo '#!/bin/sh\n\
-[ -x "/etc/init.d/mosdns" ] && /etc/init.d/mosdns enable && /etc/init.d/mosdns start\n\
-rm -f /etc/uci-defaults/70-mosdns\n\
-exit 0' > $(1)/etc/uci-defaults/70-mosdns
-	chmod +x $(1)/etc/uci-defaults/70-mosdns
+define Package/mosdns/postinst
+#!/bin/sh
+logger -t mosdns "Running postinst script"
+[ -x "/etc/init.d/mosdns" ] && /etc/init.d/mosdns enable
+logger -t mosdns "Postinst script completed"
+exit 0
 endef
 
 $(eval $(call GoBinPackage,mosdns))
