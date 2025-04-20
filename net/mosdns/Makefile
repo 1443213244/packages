@@ -55,10 +55,15 @@ define Package/mosdns/install
 	$(INSTALL_DATA) ./files/rules/local.txt $(1)/etc/mosdns/rules/local.txt
 
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	echo '#!/bin/sh
-[ -x "/etc/init.d/mosdns" ] && /etc/init.d/mosdns enable
+	cat > $(1)/etc/uci-defaults/70-mosdns << 'EOF'
+#!/bin/sh
+[ -x "/etc/init.d/mosdns" ] && {
+	/etc/init.d/mosdns enable
+	/etc/init.d/mosdns start
+}
 rm -f /etc/uci-defaults/70-mosdns
-exit 0' > $(1)/etc/uci-defaults/70-mosdns
+exit 0
+EOF
 	chmod +x $(1)/etc/uci-defaults/70-mosdns
 endef
 
